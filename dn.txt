@@ -1,4 +1,5 @@
-node1.company.com
-node2.company.com
-node3.company.com
-node4.company.com
+nuc01
+nuc02
+nuc04
+nuc05
+nuc06

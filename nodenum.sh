@@ -1,1 +1,1 @@
-export NODENUM=1
+export NODENUM=2

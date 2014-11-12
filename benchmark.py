@@ -1,13 +1,13 @@
-from optparse import OptionParser
 from impala.dbapi import connect
+from impala.error import Error
+from thrift import Thrift
 import re
 import time
 import sys
 import csv
 import logging
 from joblib import Parallel, delayed
-import threading
-
+import random
 
 def test_connection():
     conn = connect(host='nuc02', port=21050)
@@ -19,97 +19,104 @@ def test_connection():
 
 
 def run_benchmark():
-    server = 'nuc02'
+    servers = ['nuc02', 'nuc04', 'nuc05', 'nuc06']
     #sizes = [300, 200, 100, 10, 1]
     sizes = [100]
     streams = 1
-    parallelisms = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+    parallelisms = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 15, 20, 30, 40, 50, 100]
     #parallelisms = [6, 7, 8, 9, 10]
     #query_list = [19]
     logging.basicConfig(filename='output/queries.log', level=logging.INFO)
     syntax = 'impala'
     output = 'output/results.csv'
     save_header(output)
-    run_queries(server, sizes, streams, parallelisms, syntax, output)
+    run_queries(servers, sizes, streams, parallelisms, syntax, output)
 
 
 def save_header(path):
     with open(path, 'wb') as csvfile:
         w = csv.writer(csvfile, delimiter=',')
-        w.writerow(['query', 'size', 'stream', 'streams', 'parallelism', 'measurement'])
+        w.writerow(['query', 'size', 'stream', 'parallelism', 'measurement'])
 
 
-def save_results(path, results, size, stream, streams, parallelism):
+def save_results(path, results, size, stream, parallelism):
     with open(path, 'a') as csvfile:
         w = csv.writer(csvfile, delimiter=',')
         for query, measurements in results.iteritems():
             for measurement in measurements:
-                w.writerow([query, size, stream, streams, parallelism, measurement])
+                w.writerow([query, size, stream, parallelism, measurement])
 
 
-def run_queries(server, sizes, streams, parallelisms, syntax, output):
+def run_queries(servers, sizes, streams, parallelisms, syntax, output):
     for stream in range(0,streams):
         for parallelism in parallelisms:
             for size in sizes:
                 try:
+                    queries = prepare_queries(size, parallelism, syntax)
                     results = Parallel(n_jobs=parallelism)(
-                        delayed(run_query_stream)(size, stream, parallelism, server, syntax) for stream in
-                        range(0, parallelism))
+                        delayed(run_query_stream)(size, p, parallelism, servers, queries[p]) for p in range(0, parallelism))
 
                     sys.stdout.write('done\n')
                     i = 0
                     for result in results:
-                        save_results(output, result, size, i, streams, parallelism)
+                        save_results(output, result, size, i, parallelism)
                         i += 1
                 except:
                     print '\nerror running stream %dGB - stream: %s' % (size, sys.exc_info())
 
 
-def run_query_stream(size, stream, parallelism, server, syntax):
+#create a separate query set for each stream
+def prepare_queries(size, parallelism, syntax):
+    results = {}
+    for stream in range(0, parallelism):
+        results[stream] = {}
+        filename = 'queries/' + str(size) + '/query_' + str(stream % 1) + '.sql'
+        with open(filename) as f:
+            txt = f.read()
+        queries = re.split('-- end query .*', txt)
+        for query in queries:
+            template = re.search('using template query([0-9]+)\.tpl', query)
+            query = re.sub('-- start .*', '', query)
+            query = reformat(query, syntax)
+            query = re.split(';\n*', query)
+            if template is not None:
+                nr = 'q' + template.group(1)
+                results[stream][nr] = query
+    return results
+
+
+def run_query_stream(size, stream, parallelism, servers, queries):
     sys.stdout.write('\n*** Start %dGB - stream %d/%d ***\n' % (size, stream + 1, parallelism))
     sys.stdout.flush()
     results = {}
-    filename = 'queries/' + str(size) + '/query_' + str(stream%10) + '.sql'
-    f = open(filename)
-    txt = f.read()
-    f.close()
-    queries = re.split('-- end query .*', txt)
-    for query in queries:
-        template = re.search('using template query([0-9]+)\.tpl', query)
-        query = re.sub('-- start .*', '', query) #.replace('\n', ' ')
-        query = reformat(query, syntax)
-        query = re.split(';\n*', query)
-        if template is not None:
-            q = int(template.group(1))
-            nr = 'q' + template.group(1)
-            try:
-                conn = connect(host=server, port=21050)
-                cur = conn.cursor()
-                db = 'tpcds_' + str(size)
-                cur.execute('USE ' + db)
-                start = time.time()
-                for query_part in query:
-                    if 'select' in query_part:
-                        cur.execute(query_part)
+    for nr, query in queries.iteritems():
+        try:
+            server = random.choice(servers)
+            conn =  connect(host=server, port=21050)
+            cur = conn.cursor()
+            db = 'tpcds_' + str(size)
+            cur.execute('USE ' + db)
+            start = time.time()
+            for query_part in query:
+                if 'select' in query_part:
+                    cur.execute(query_part)
 
-                end = time.time()
-                total = end - start
-                if not nr in results:
-                    results[nr] = []
-                results[nr].append(total)
-                cur.close()
-                conn.close()
-                logging.info("%dGB - stream %d/%d - %s: %fs" % (size, stream + 1, parallelism, nr, total))
-            except:
-                logging.info(
-                    "%dGB - stream %d/%d - %s: failed: %s" % (size, stream + 1, parallelism, nr, sys.exc_info()))
-                try:
-                    cur.close()
-                    conn.close()
-                except:
-                    logging.warn('couldn\'t close connection')
-            sys.stdout.write('%d.%s ' % (stream + 1, nr))
-            sys.stdout.flush()
+            end = time.time()
+            total = end - start
+            if not nr in results:
+                results[nr] = []
+            results[nr].append(total)
+            logging.info("%dGB - stream %d/%d - %s: %fs" % (size, stream + 1, parallelism, nr, total))
+        except Error as e:
+            logging.warn("%dGB - stream %d/%d - %s: failed: %s" % (size, stream + 1, parallelism, nr, str(e)))
+        except Thrift.TException as e:
+            logging.fatal("%dGB - stream %d/%d - %s: failed: %s" % (size, stream + 1, parallelism, nr, str(e)))
+            exit(0)
+        finally:
+            cur.close()
+            conn.close()
+        sys.stdout.write('%s:%d.%s ' % (server, stream + 1, nr))
+        sys.stdout.flush()
 
     logging.info("successful queries: [%s]" % ', '.join(key for key, value in results.iteritems()))
     sys.stdout.write('\n*** End %dGB - stream %d/%d *** \n' % (size, stream + 1, parallelism))

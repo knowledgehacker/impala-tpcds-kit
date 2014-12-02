@@ -1,6 +1,6 @@
-# A TPC-DS like benchmark for Cloudera Impala
+# A Fair benchmark for Cloudera impala
 
-Based on TPC-DS v1.1.0 found at [http://www.tpc.org/tpcds/](http://www.tpc.org/tpcds/)
+Based on TPC-DS benchmark for Cloudera we found here [https://github.com/cloudera/impala-tpcds-kit](https://github.com/cloudera/impala-tpcds-kit)
 
 **NOTICE: This repo contains modifications to the official TPC-DS specification so any results from this are not comparable to officially audited results.**
 

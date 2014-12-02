@@ -4,25 +4,6 @@ Based on TPC-DS benchmark for Cloudera we found here [https://github.com/clouder
 
 **NOTICE: This repo contains modifications to the official TPC-DS specification so any results from this are not comparable to officially audited results.**
 
-## Schema Information
-
-The following tables are currently used:
-
-Dimension Tables:
-
-* DATE_DIM
-* TIME_DIM
-* CUSTOMER
-* CUSTOMER_ADDRESS
-* CUSTOMER_DEMOGRAPHICS
-* HOUSEHOLD_DEMOGRAPHICS
-* ITEM
-* PROMOTION
-* STORE
-
-Fact Tables:
-
-* STORE_SALES
 
 ## Environment Setup Steps
 
@@ -57,20 +38,9 @@ These scripts also assume that your $HOME directory is the same path on all Data
 * Run `set-nodenum.sh`.  This will create `impala-tpcds-kit/nodenum.sh` on every DataNode and set the value accordingly.  This is used to determine what portion of the distributed data generation is done on each node.
 
 ## Preparation and Data Generation
-
-Data is landed directly in HDFS so there is no requirement for any local storage.
-
-* `hdfs-mkdirs.sh` - Make HDFS directories for each table.
-* `gen-dims.sh` - Generate dimension flat files (runs on one DataNode only).
-* `run-gen-facts.sh` - Runs `gen-facts.sh` on each DataNode via ssh to generate STORE_SALES flat files.
-
-## Data Loading
-
-### Impala Steps
-* `impala-create-external-tables.sh` - Creates a Hive database and the external tables pointing to flat files.
-* `impala-load-dims.sh` - Load dimension tables (no format specified, modify as necessary, but not required).
-* `impala-load-store_sales.sh` - Load STORE_SALES table which uses dynamic partitioning, one partition per calendar day.
-* `impala-compute-stats.sh` - Gather table and column statistics on all tables.
+ 
+  * `./push-bits.sh && ./set-nodenum.sh && ./run-gen-facts.sh > /tmp/tpcds.log && tail -f /tmp/tpcds.log`
+  * `./returns-move.sh && ./hdfs-load.sh && ./impala-drop-db.sh && ./impala-create-external-tables.sh && ./impala-load-all.sh && ./impala-compute-stats.sh`
 
 ## Queries
 

@@ -39,12 +39,14 @@ These scripts also assume that your $HOME directory is the same path on all Data
 
 ## Preparation and Data Generation
  
-  * `./push-bits.sh && ./set-nodenum.sh && ./run-gen-facts.sh > /tmp/tpcds.log && tail -f /tmp/tpcds.log`
-  * `./returns-move.sh && ./hdfs-load.sh && ./impala-drop-db.sh && ./impala-create-external-tables.sh && ./impala-load-all.sh && ./impala-compute-stats.sh`
+`./push-bits.sh && ./set-nodenum.sh && ./run-gen-facts.sh > /tmp/tpcds.log && tail -f /tmp/tpcds.log`
+
+## Data loading
+
+`./returns-move.sh && ./hdfs-load.sh && ./impala-drop-db.sh && ./impala-create-external-tables.sh && ./impala-load-all.sh && ./impala-compute-stats.sh`
 
 ## Queries
 
-`impala-tpcds-kit/queries` contains queries execute on Impala (v1.2.3+). Note that the
-queries are not qualified with a database name. In order to run them, the impala-shell
-needs to be run with the -d paramater. Alternatively, one can also issue a use db_name
-before running each individual query.
+`impala-tpcds-kit/benchmark.py` is the python script that executes all queries. The method `run_benchmark()` allows to specify different parameters for benchmarking.
+
+The queries themselves can be found in `impala-tpcds-kit/queries`. For each Scale Factor, 10 different query streams are generated. You can generate more using the TPC-DS toolkit. 
